@@ -97,13 +97,12 @@ analytics, no data collection of any kind. See
 ## Compatibility
 
 **<ins>Fire OS 8</ins>: Supported**<br>
-Built and tested against Fire OS 8.1.7.4
-(post-September-2025 patch) on an Amazon Ember TV. Should also
-work on older Fire OS 8.x builds out of the box. The app targets
+Built and tested on Fire OS 8.1.7.4 to 8.1.8.2 on an Amazon Ember
+TV. Should also work on older Fire OS 8.x builds out of the box. The app targets
 Android API 34 with a minimum of API 21.
 
 **<ins>Fire OS 7</ins>: Supported**<br>
-Verified on Fire OS 7.7.1.4 and 7.7.1.5, confirmed across community
+Verified on Fire OS 7.7.1.4 to 7.7.1.5, confirmed across community
 reports. Android 9 holds a Home-triggered launch for up to 5 seconds
 (the app-switch lock), so your target appears a few seconds late; Home on
 Fire covers the wait with a loading animation (or a plain black screen)
@@ -409,10 +408,11 @@ Manual pipeline if you'd rather not use the script:
 - **Buttons that only open Amazon home can't be mapped.** Some Fire OS 8 Live
   TV buttons open Amazon's home screen, not a distinct app, so it can't be
   told from Home. The app shows a message if you try.
-- **⌂ Home does nothing while Amazon home is already in front.** The redirect
-  reacts to the launcher coming to the foreground, and a launcher that is
-  already there fires no such event. Leave the screen first, or use one of the
-  escape gestures.
+- **⌂ Home can't redirect while Amazon home is already in front.** That
+  includes Amazon's Apps screen. The redirect reacts to the launcher coming to
+  the foreground. A launcher that is already there fires no such event. Press
+  <kbd>◉ OK</kbd> or <kbd>↩ Back</kbd> on the highlighted Home button to get to
+  your launcher.
 
 ---
 
