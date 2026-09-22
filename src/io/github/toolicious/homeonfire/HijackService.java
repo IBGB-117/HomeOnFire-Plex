@@ -436,8 +436,9 @@ public class HijackService extends AccessibilityService {
      *
      * The primary signal, and the more reliable one. Measured 2026-09-15 over six Apps
      * presses, it was right every time, while the window content still read as the Home
-     * screen on four of them. {@link #scanActiveWindow} only adds to it, for the press
-     * whose grid window never arrived here at all.
+     * screen on four of them. {@link #scanActiveWindow} only adds to it. It covers a slow
+     * device whose hand-over arrives after {@link #APPS_HANDOVER_MS}. Any other app coming
+     * to the front clears the timestamp, see the reset in onAccessibilityEvent.
      *
      * Not enough on its own for two reasons: the grid does not always announce a window,
      * and its hand-over can produce more than one Amazon-home arrival (measured: a second
@@ -718,6 +719,16 @@ public class HijackService extends AccessibilityService {
             // home it hands over to can be told from a Home press in both cases.
             if (AMAZON_APPS_GRID.equals(pkgStr) && isAppsGridWindow(clsStr)) {
                 lastAppsGridAt = System.currentTimeMillis();
+            } else if (lastAppsGridAt != 0L && isRealContentClass(clsStr)
+                    && !AMAZON_APPS_GRID.equals(pkgStr)
+                    && !AMAZON_LAUNCHER.equals(pkgStr) && !KIDS_LAUNCHER.equals(pkgStr)) {
+                // Another app came to the front after the grid. Whatever Amazon home shows
+                // up next cannot be the grid's hand-over any more. Starting an app from
+                // Amazon's Apps screen passes through a bare venezia window that counts as
+                // the grid. Without this reset a Home press from that app would fall inside
+                // APPS_SECTION_TRUST_MS and be swallowed whenever the launcher still showed
+                // the Apps tabs (measured 2026-09-15: sinceGrid=4442ms at such a Home press).
+                lastAppsGridAt = 0L;
             }
             boolean mapOn = prefs.isLaunchKeyEnabled();
             String launchWin = prefs.getLaunchWindow();
@@ -1784,6 +1795,83 @@ public class HijackService extends AccessibilityService {
         return SECTION_UNKNOWN;
     }
 
+    /**
+     * True when a view id names one of the Apps screen's tabs. The Apps screen puts its
+     * first tab exactly where the home screen has its Home tab. The Home-tab checks go by
+     * position and need this to tell the two apart.
+     */
+    private static boolean isAppsTabViewId(CharSequence viewId) {
+        return viewId != null && viewId.length() > 0
+                && sectionForViewId(viewId.toString()) == SECTION_APPS;
+    }
+
+    /**
+     * True when a focus at the Home tab position belongs to the Apps screen. Either the
+     * focused node's id names an Apps tab, or the Apps grid came up moments ago with no
+     * other app in front since. The second test does not depend on which node the
+     * launcher reports as focused. It covers the case measured on 2026-09-22, a focus
+     * event 3.1 s after the grid, even if that node carried no id.
+     */
+    private boolean focusIsOnAppsScreen(CharSequence viewId) {
+        if (isAppsTabViewId(viewId)) return true;
+        return System.currentTimeMillis() - lastAppsGridAt < APPS_SECTION_TRUST_MS;
+    }
+
+    /** View id prefixes of the launcher's Home tab, the one the Back/OK gesture acts on. */
+    private static final String[] HOME_TAB_VIEW_IDS = {
+            "nav-tab-movies_and_tv_home",
+    };
+
+    /** True when a view id names the launcher's Home tab. */
+    private static boolean isHomeTabViewId(String viewId) {
+        int slash = viewId.lastIndexOf('/');
+        String id = slash >= 0 ? viewId.substring(slash + 1) : viewId;
+        for (String p : HOME_TAB_VIEW_IDS) {
+            if (id.startsWith(p)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * View id of the first focused node in the active window that carries one, or null.
+     * Amazon's Compose launcher marks its active tab this way, while findFocus only
+     * returns the full-screen host view. A node that is focused but has no id is walked
+     * past, since the host view itself counts as focused.
+     */
+    private String focusedViewId() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return null;
+        try {
+            return findFocusedViewId(root, 0);
+        } catch (Exception e) {
+            // A node can go stale mid-walk while the launcher is redrawing.
+            return null;
+        } finally {
+            root.recycle();
+        }
+    }
+
+    /** Depth-first search for {@link #focusedViewId}. */
+    private String findFocusedViewId(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > SECTION_SCAN_MAX_DEPTH) return null;
+        if (node.isFocused()) {
+            CharSequence id = node.getViewIdResourceName();
+            if (id != null && id.length() > 0) return id.toString();
+        }
+        int children = node.getChildCount();
+        for (int i = 0; i < children; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            try {
+                String found = findFocusedViewId(child, depth + 1);
+                if (found != null) return found;
+            } finally {
+                child.recycle();
+            }
+        }
+        return null;
+    }
+
     /** Log-friendly name for a {@link #scanActiveWindow} section result. */
     private static String sectionName(int section) {
         if (section == SECTION_APPS) return "apps";
@@ -1941,6 +2029,20 @@ public class HijackService extends AccessibilityService {
      * the cache.
      */
     private boolean isHomeTabFocused() {
+        // Amazon's Compose launcher reports only its full-screen host view as input focus
+        // (measured 2026-09-22 on Fire OS 8.1.8.2). The Home tab bounds rarely get cached
+        // there either. The position check below therefore never matched. The gesture did
+        // nothing. The launcher does mark its active tab as focused, with an id that names
+        // it.
+        String focusedId = focusedViewId();
+        if (focusedId != null) {
+            boolean home = isHomeTabViewId(focusedId);
+            if (prefs.isVerboseLogging()) {
+                Log.i(TAG, "Back/OK on Amazon home: focused " + focusedId
+                        + (home ? " is" : " is not") + " the Home tab");
+            }
+            return home;
+        }
         android.graphics.Rect cached = cachedHomeTabBounds;
         if (cached == null) return false;
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -1950,6 +2052,9 @@ public class HijackService extends AccessibilityService {
             if (focused == null) focused = root.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY);
             if (focused == null) return false;
             try {
+                // Same position trap as in maybeInferHomePress. OK on the Apps screen's
+                // "For you" tab has to select it instead of leaving for the launcher.
+                if (focusIsOnAppsScreen(focused.getViewIdResourceName())) return false;
                 android.graphics.Rect b = new android.graphics.Rect();
                 focused.getBoundsInScreen(b);
                 return Math.abs(b.centerX() - cached.centerX()) <= TAB_MATCH_TOLERANCE_PX
@@ -2011,11 +2116,19 @@ public class HijackService extends AccessibilityService {
         try {
             android.graphics.Rect b = new android.graphics.Rect();
             src.getBoundsInScreen(b);
+            if (prefs.isVerboseLogging()) {
+                // Which node the launcher reports as focused, with its id. Shows whether the
+                // Apps screen's "For you" tab carries its id on the focus event itself.
+                Log.i(TAG, "launcher focus id=" + src.getViewIdResourceName()
+                        + " bounds=" + b.flattenToString() + " dpad=" + wasDpadDriven
+                        + " cached=" + (cachedHomeTabBounds == null
+                                ? "null" : cachedHomeTabBounds.flattenToString()));
+            }
             if (pendingHomeTabCapture) {
                 storeBoundsIfPlausible(b, src.getClassName(), "focus path");
                 return;
             }
-            maybeInferHomePress(b, wasDpadDriven);
+            maybeInferHomePress(b, wasDpadDriven, src.getViewIdResourceName());
         } finally {
             src.recycle();
         }
@@ -2036,13 +2149,27 @@ public class HijackService extends AccessibilityService {
      * Home tab; suppressing that as "no real jump" would lose the
      * signal entirely for the lower-row case.
      */
-    private void maybeInferHomePress(android.graphics.Rect b, boolean wasDpadDriven) {
+    private void maybeInferHomePress(android.graphics.Rect b, boolean wasDpadDriven,
+                                     CharSequence viewId) {
         android.graphics.Rect cached = cachedHomeTabBounds;
         if (cached == null) return;
         boolean matchesHomeTab =
                 Math.abs(b.centerX() - cached.centerX()) <= TAB_MATCH_TOLERANCE_PX
                 && Math.abs(b.centerY() - cached.centerY()) <= TAB_MATCH_TOLERANCE_PX;
         if (!matchesHomeTab) return;
+        // The Apps screen focuses its first tab, "For you", when it comes up. That tab sits
+        // exactly where the home screen has its Home tab. Once Fire OS 8.1.8.2 let the Home
+        // tab bounds get cached, that focus event passed for a Home press and sent every
+        // Apps press on to the launcher (measured 2026-09-22). See focusIsOnAppsScreen for
+        // how the two are told apart.
+        if (focusIsOnAppsScreen(viewId)) {
+            if (prefs.isVerboseLogging()) {
+                Log.i(TAG, "focus at the Home tab position is on the Apps screen (" + viewId
+                        + ", grid " + (System.currentTimeMillis() - lastAppsGridAt)
+                        + "ms ago), not a Home press");
+            }
+            return;
+        }
         if (!shouldInferHomePress(wasDpadDriven)) {
             if (prefs.isVerboseLogging()) {
                 Log.i(TAG, "focus on Home tab, but inference suppressed"
@@ -2053,7 +2180,7 @@ public class HijackService extends AccessibilityService {
         String target = prefs.getTargetPackage();
         if (target == null || target.isEmpty() || target.equals(getPackageName())) return;
         // lastHijackAt is armed inside launchTarget on success.
-        launchTarget(target, "Inferred Home press from focus event on Home tab");
+        launchTarget(target, "Inferred Home press from focus event on Home tab (" + viewId + ")");
     }
 
     /**
