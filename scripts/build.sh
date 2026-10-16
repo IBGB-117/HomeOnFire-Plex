@@ -7,8 +7,10 @@ if [[ "$mode" != debug && "$mode" != release ]]; then
   echo 'Usage: scripts/build.sh [debug|release]' >&2; exit 2
 fi
 export TOOLCHAIN_DIR="${TOOLCHAIN_DIR:-$PWD/.tools}"
-export JAVA_HOME="${JAVA_HOME:-$TOOLCHAIN_DIR/jdk-21.0.8+9}"
-export ANDROID_HOME="${ANDROID_HOME:-$TOOLCHAIN_DIR/android-sdk}"
+# GitHub runners export their own JAVA_HOME/ANDROID_HOME. Always use the
+# checksum-pinned toolchain, including when those unrelated tools are installed.
+export JAVA_HOME="$TOOLCHAIN_DIR/jdk-21.0.8+9"
+export ANDROID_HOME="$TOOLCHAIN_DIR/android-sdk"
 export PATH="$JAVA_HOME/bin:$PATH"
 tools="$ANDROID_HOME/build-tools/36.1.0"
 android_jar="$ANDROID_HOME/platforms/android-34/android.jar"
