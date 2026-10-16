@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-plex-test-1
+  group: publish-plex-test-2
   cancel-in-progress: false
 
 jobs:
@@ -24,12 +24,20 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Verify existing APK checksum
-        run: sha256sum -c homeonfire-plex-test.apk.sha256
+      - name: Verify APK checksum and Android 11 resource storage
+        run: |
+          sha256sum -c homeonfire-plex-test.apk.sha256
+          PYTHONDONTWRITEBYTECODE=1 python3 - <<'PYCODE'
+          import importlib.util
+          spec = importlib.util.spec_from_file_location('verify_apk', 'scripts/verify-apk.py')
+          verifier = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(verifier)
+          verifier.verify_resource_table('homeonfire-plex-test.apk')
+          PYCODE
       - name: Upload signed test APK and publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload plex-test-1 homeonfire-plex-test.apk homeonfire-plex-test.apk.sha256 --clobber
-          gh release edit plex-test-1 --draft=false --prerelease --latest=false
+          gh release upload plex-test-2 homeonfire-plex-test.apk homeonfire-plex-test.apk.sha256 --clobber
+          gh release edit plex-test-2 --draft=false --prerelease --latest=false

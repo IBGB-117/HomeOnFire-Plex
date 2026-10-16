@@ -130,6 +130,24 @@ credentials. Repeated unchanged foreground observations are rate-limited to once
 per minute. Existing upstream verbose logging remains optional; review any log
 before sharing it.
 
+## APK packaging correction (test.2 / versionCode 142)
+
+The first distributed APK was 190,851 bytes. Its signature, ZIP integrity and DEX
+were valid, but canonical ZIP repacking compressed `resources.arsc`. Android 11+
+rejects target-SDK-30+ APKs unless that resource table is stored uncompressed and
+four-byte aligned (`INSTALL_PARSE_FAILED_RESOURCES_ARSC_COMPRESSED`). This is an
+actual packaging defect; the small overall file size alone does not diagnose it.
+The rule is enforced in AOSP Android 11 `ParsingPackageUtils.parseBaseApk`.
+
+Test.2 preserves aapt2 compression decisions, then aligns stored entries before
+signing with the same external test key. The validator explicitly checks resource
+storage and the actual payload offset from the ZIP local header. Four packaging
+regression tests cover compressed, misaligned, correctly aligned and differing
+local/central ZIP padding. The new check also rejects the original distributed APK.
+The distribution workflow checks this rule before uploading. Use the `plex-test-2`
+release URL to avoid reusing a cached test.1 download. Device installation and Fire
+OS execution are still separate acceptance checks and have not been performed.
+
 ## Linux / Codex Cloud builds
 
 The primary build is the checked-in Linux pipeline. The historical Windows

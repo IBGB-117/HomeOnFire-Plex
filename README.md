@@ -5,7 +5,7 @@ persistent completion and free Home/navigation afterwards. It uses the separate
 package `io.github.ibgb117.homeonfireplex.test`; the original application is not
 replaced. **Fire OS 8.1.8.5 device validation is pending.**
 
-**[Download the signed test APK](https://github.com/IBGB-117/HomeOnFire-Plex/releases/download/plex-test-1/homeonfire-plex-test.apk)** (direct file download for Fire TV Downloader).
+**[Download the signed test APK](https://github.com/IBGB-117/HomeOnFire-Plex/releases/download/plex-test-2/homeonfire-plex-test.apk)** (direct file download for Fire TV Downloader).
 
 See [Plex behavior, Linux/Cloud builds, signing, CI and acceptance tests](docs/PLEX_AUTOSTART.md).
 The original project documentation follows for provenance; its package names,

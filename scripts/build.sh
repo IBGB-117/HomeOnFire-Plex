@@ -34,7 +34,11 @@ with zipfile.ZipFile(work/'resources.apk') as src, zipfile.ZipFile(work/'unsigne
     entries['classes.dex']=(work/'dex/classes.dex').read_bytes()
     for name in sorted(entries):
         info=zipfile.ZipInfo(name, stamp)
-        info.compress_type=zipfile.ZIP_DEFLATED
+        # Preserve aapt2's storage decisions. Android 11+ rejects target-30+
+        # APKs whose resources.arsc is compressed or not four-byte aligned.
+        # zipalign below aligns stored entries before the APK is signed.
+        info.compress_type=(src.getinfo(name).compress_type
+                            if name in src.namelist() else zipfile.ZIP_DEFLATED)
         info.external_attr=0o100644 << 16
         dest.writestr(info, entries[name], compresslevel=9)
 PY
