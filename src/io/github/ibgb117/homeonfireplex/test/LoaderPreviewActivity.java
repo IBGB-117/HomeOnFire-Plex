@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 toolicious
-package io.github.toolicious.homeonfire;
+package io.github.ibgb117.homeonfireplex.test;
 
 import android.app.Activity;
 import android.os.Bundle;

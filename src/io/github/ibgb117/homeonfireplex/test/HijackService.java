@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 toolicious
-package io.github.toolicious.homeonfire;
+package io.github.ibgb117.homeonfireplex.test;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.ComponentName;
@@ -16,8 +16,11 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 /**
- * Accessibility service that redirects the Fire TV's Home button to
- * the user's chosen target launcher.
+ * Plex test fork: the accessibility service hosts boot/wake autostart and
+ * explicit remote mappings. Prefs permanently disables all legacy Home redirect
+ * paths; handleAmazonHomeArrival also has no inferred/reasserted launch behavior.
+ * The upstream redirect implementation below is retained for provenance and its
+ * mapping/diagnostic helpers; its Home replacement behavior is not enabled.
  *
  * Why an accessibility service: Fire OS 8 intercepts KEYCODE_HOME
  * inside FireTVKeyPolicyManager (Android's PhoneWindowManager) before
@@ -236,6 +239,22 @@ public class HijackService extends AccessibilityService {
      * Initialized in {@link #onServiceConnected}.
      */
     private Prefs prefs;
+    private AutostartCoordinator autostart;
+    private long lastExplicitWindowAt = -2000;
+    private String lastExplicitWindowTarget = "";
+
+    static boolean autostartBootSignal(boolean explicit, String source) {
+        HijackService instance = sInstance;
+        if (instance == null || instance.autostart == null) return false;
+        instance.autostart.boot(explicit, source);
+        return true;
+    }
+
+    static String autostartSummary() {
+        HijackService instance = sInstance;
+        return instance == null || instance.autostart == null ? "service not bound"
+                : instance.autostart.summary();
+    }
 
     @Override
     protected void onServiceConnected() {
@@ -273,73 +292,14 @@ public class HijackService extends AccessibilityService {
                 root.recycle();
             }
         }
-        registerScreenOnReceiver();
+        if (autostart != null) autostart.close();
+        autostart = new AutostartCoordinator(this, mainHandler);
+        autostart.start();
         // Delayed so whatever is on screen has finished building its tree.
         mainHandler.postDelayed(new Runnable() {
             @Override public void run() { logSectionProbe(); }
         }, SECTION_PROBE_DELAY_MS);
     }
-
-    /** Set while a screen-on receiver is registered; cleared on unbind. */
-    private android.content.BroadcastReceiver screenOnReceiver;
-
-    /**
-     * On wake from standby, Fire OS often surfaces Amazon's home
-     * activity instead of restoring whatever the user had foreground
-     * before. The WSE-based auto-hijack does not always fire here
-     * (state may be preserved silently, or the prev tracker has gone
-     * stale during standby), so we hook ACTION_SCREEN_ON explicitly
-     * and re-launch the target if Amazon home is what shows up.
-     *
-     * ACTION_SCREEN_ON can only be registered dynamically (manifest
-     * registration is silently ignored on Android 7+).
-     */
-    private void registerScreenOnReceiver() {
-        if (screenOnReceiver != null) return;
-        screenOnReceiver = new android.content.BroadcastReceiver() {
-            @Override
-            public void onReceive(android.content.Context context,
-                                  android.content.Intent intent) {
-                handleWakeFromStandby();
-            }
-        };
-        registerReceiver(screenOnReceiver,
-                new android.content.IntentFilter(Intent.ACTION_SCREEN_ON));
-    }
-
-    /**
-     * Brings the target back to foreground if the device woke into
-     * Amazon home. Gated by the launch-on-boot preference (same
-     * conceptual surface: device coming alive). Delays the check
-     * briefly so Fire OS's wake animation has time to settle and the
-     * post-wake activity is actually visible to {@link #isCurrentlyOnAmazonLauncher}.
-     */
-    private void handleWakeFromStandby() {
-        if (!prefs.isHijackEnabled()) return;
-        if (!prefs.getLaunchOnBoot()) return;
-        final String target = prefs.getTargetPackage();
-        if (target == null || target.isEmpty()) return;
-        if (mainHandler == null) {
-            mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-        }
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                // Honor an active long-press / external bypass window so a
-                // deliberate escape to Amazon home isn't undone if the
-                // screen cycles off and on within that window. launchTarget
-                // arms lastHijackAt itself, so a racing WSE / focus event
-                // is debounced.
-                if (System.currentTimeMillis() < bypassUntil) return;
-                if (isCurrentlyOnAmazonLauncher()) {
-                    launchTarget(target, "Wake from standby, Amazon home foreground");
-                }
-            }
-        }, WAKE_LAUNCH_DELAY_MS);
-    }
-
-    /** Delay between SCREEN_ON and our wake-foreground check. */
-    private static final long WAKE_LAUNCH_DELAY_MS = 500L;
 
     /**
      * Pending Menu-long-press fire, or {@code null} if no Menu key is
@@ -621,6 +581,7 @@ public class HijackService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
+        if (autostart != null) autostart.event(event);
 
         int type = event.getEventType();
         if (type == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
@@ -944,181 +905,8 @@ public class HijackService extends AccessibilityService {
      *    pressed Home twice)
      */
     private void handleAmazonHomeArrival() {
-        String prev = previousForegroundPkg;
-        long now = System.currentTimeMillis();
-        // Which screen the launcher is actually showing. Read once per arrival and reused
-        // below, because it walks the node tree.
-        // With verbose logging on, the same walk also collects the distinct view ids, so
-        // a report from a launcher we have no markers for still shows what it calls its
-        // tabs. Short of that sample there is no way to learn another Fire OS build's
-        // navigation bar, since we cannot read that device ourselves.
-        boolean verbose = prefs.isVerboseLogging();
-        SectionScan scan = scanActiveWindow(verbose);
-        int section = scan == null ? SECTION_UNKNOWN : scan.section;
-        // Apps press or Home press. The Apps button and the Home key both end in
-        // HomeActivity_vNext, since venezia starts that activity itself, so the window
-        // event cannot separate them.
-        //
-        // The section is read the instant that window arrives, BEFORE the launcher has
-        // repainted, so right after an Apps press it often still reports the Home screen
-        // (measured 2026-09-15: four of six presses). A Home reading therefore carries no
-        // information and must never cancel the grid window, which had all six right.
-        //
-        // An Apps reading does carry information, because nothing but an Apps press puts
-        // those tabs up, and it covers the press where no venezia window reached us at
-        // all. It still gets a time bound: the launcher keeps showing Apps long after the
-        // press (measured: 7.8 s later), and an unbounded reading would swallow a real
-        // Home press that lands on that leftover screen.
-        boolean appsSection = section == SECTION_APPS
-                && now - lastAppsGridAt < APPS_SECTION_TRUST_MS;
-        boolean appsHandover = appsSection || now - lastAppsGridAt < APPS_HANDOVER_MS;
-        if (verbose) {
-            // pkg is the window we actually WALKED, which is not always Amazon's: a
-            // second arrival can land after our own redirect has already put the target
-            // launcher in front, and then these counts describe that instead.
-            Log.i(TAG, "Amazon home arrival: section="
-                    + sectionName(section)
-                    + " appsSection=" + appsSection
-                    + " appsHandover=" + appsHandover
-                    + " sinceGrid=" + (now - lastAppsGridAt) + "ms"
-                    + " pkg=" + (scan == null ? "none" : scan.pkg)
-                    + " nodes=" + (scan == null ? -1 : scan.nodes)
-                    + " withViewId=" + (scan == null ? -1 : scan.withViewId)
-                    + " focus=" + shellFocus(scan)
-                    + " ids=[" + shellIdSample(scan) + "]");
-            // The launcher is still building its tree here, so those ids are the content
-            // rows and nothing else. Measured 2026-09-15: the navigation bar was missing
-            // from every arrival, and two of them handed us no window at all. Look again
-            // once it has settled, for the log only.
-            scheduleSettledScan();
-        }
-        // A mapped button launched an app a moment ago. This Amazon home comes from the
-        // button's own screen (the Apps grid) closing, not from a Home press, and it can
-        // arrive before or after the app's first window, once or twice. Hijacking would
-        // start the launcher over the app, so launch the app again. This belongs to the
-        // mapping, not to the Home replacement, so it runs even with that switched off.
-        if (pendingButtonApp != null && now < bypassUntil) {
-            // An explicit escape to Amazon home (mapped key, long-press panel, learn mode)
-            // outranks the grace window.
-            pendingButtonApp = null;
-        }
-        if (pendingButtonApp != null && now - lastWindowLaunchAt < BUTTON_LAUNCH_GRACE_MS) {
-            String app = pendingButtonApp;
-            if ((maskArmed && app.equals(maskTargetPkg))
-                    || now - pendingRelaunchAt < RELAUNCH_IN_FLIGHT_MS) {
-                // Fire OS 7 keeps the mask armed while the relaunch sits in the app-switch
-                // lock; Fire OS 8 has no mask, so a short time window stands in for it.
-                if (prefs.isVerboseLogging()) {
-                    Log.i(TAG, "Amazon home appeared, relaunch of " + app + " still pending");
-                }
-                return;
-            } else if (pendingButtonRelaunches < BUTTON_MAX_RELAUNCHES) {
-                pendingButtonRelaunches++;
-                pendingRelaunchAt = now;
-                if (pendingReassert != null && mainHandler != null) {
-                    mainHandler.removeCallbacks(pendingReassert);
-                }
-                // The relaunch can land in the app-switch lock like a Home redirect does,
-                // so it gets the loading screen on Fire OS 7.
-                if (launchTarget(app, "Amazon home appeared while " + app
-                        + " was starting, launching it again (" + pendingButtonRelaunches
-                        + ")", true)) {
-                    return;
-                }
-                // The app is gone (uninstalled meanwhile): nothing to bring back, let the
-                // arrival count as a Home press instead of waiting out the window.
-                pendingButtonApp = null;
-            } else {
-                Log.i(TAG, "Amazon home keeps covering " + app + ", leaving it");
-                pendingButtonApp = null;
-            }
-        }
-
-        // An Apps press with a slot bound to it, where no venezia window ever reached us.
-        // The grid does not always announce one (measured 2026-09-15: one of six presses
-        // produced no venezia event at all), and then this Amazon home is the only trace
-        // of the press. The section says it was Apps, so run the slot from here instead of
-        // letting the press fall through to the Home redirect. Belongs to the mapping, not
-        // to the Home replacement, so it runs with the replacement switched off too.
-        if (appsSection && pendingButtonApp == null && now >= bypassUntil
-                && now - lastWindowLaunchAt >= BUTTON_LAUNCH_GRACE_MS
-                && prefs.isLaunchKeyEnabled() && dispatchAppsSlot()) {
-            return;
-        }
-
-        if (!prefs.isHijackEnabled()) return;
-
-        String target = prefs.getTargetPackage();
-        if (target == null || target.isEmpty() || target.equals(getPackageName())) return;
-
-        // The Apps button with nothing bound to it. The user asked for Amazon's Apps
-        // screen, not for Home, so leave them there.
-        if (appsHandover) {
-            if (prefs.isVerboseLogging()) {
-                Log.i(TAG, "Apps screen, not a Home press ("
-                        + (appsSection ? "section markers, " : "")
-                        + "grid " + (now - lastAppsGridAt) + "ms ago)");
-            }
-            return;
-        }
-
-        // The last hijack's launch is still held by the app-switch lock (mask armed for
-        // this target). Another start would only queue up behind it.
-        if (maskArmed && target.equals(maskTargetPkg)
-                && sinceMaskArmed() < MASK_HARD_TIMEOUT_MS) {
-            if (prefs.isVerboseLogging()) {
-                Log.i(TAG, "Auto-hijack skipped: launch of " + target + " still pending");
-            }
-            return;
-        }
-        // Arrivals out of Amazon's own home shell (launcher / settings / quicksettings,
-        // none of which expose a Leanback launcher entry; a full Amazon app such as Prime
-        // Video does have one and redirects like any other app).
-        //
-        // Only a DELIBERATE move through that shell should be left alone, and every such
-        // move leaves a visible key behind: Back to leave a settings page, OK to pick an
-        // entry in the navigation drawer. A Home press leaves none, because the firmware
-        // eats KEYCODE_HOME before any service sees it. So the ABSENCE of a recent OK/Back
-        // is what identifies a Home press, and Home has to reach the target from inside
-        // Amazon's settings just like it does everywhere else. D-pad keys deliberately do
-        // not count: navigating to an entry and then pressing Home is still a Home press.
-        if (prev != null && prev.startsWith("com.amazon.") && !isLeanbackLaunchable(prev)
-                && isRecentShellNavKey(now)) {
-            if (prefs.isVerboseLogging()) {
-                Log.i(TAG, "Auto-hijack skipped: deliberate move inside the Amazon shell"
-                        + " (prev=" + prev + " key=" + lastKeyCode
-                        + " " + (now - lastKeyTime) + "ms ago)");
-            }
-            return;
-        }
-
-        if (now < bypassUntil) return;
-
-        // This window serves two purposes at once, which is why turning the gesture off
-        // shortens it instead of removing it:
-        //  - technical: one Home press can produce several Amazon-home events, and
-        //    without a guard each would launch the target again;
-        //  - the feature: a deliberate second press within the full window means
-        //    "leave me on Amazon home", i.e. the double-press escape.
-        // With the escape off we keep only the short technical guard, so a deliberate
-        // second press (well over 300 ms after the first) redirects again instead of
-        // stranding the user on Amazon home.
-        long debounce = prefs.isEscapeDoublePress()
-                ? HIJACK_DEBOUNCE_MS : DUPLICATE_EVENT_GUARD_MS;
-        if (now - lastHijackAt < debounce) {
-            boolean backSinceHijack = lastKeyCode == KeyEvent.KEYCODE_BACK
-                    && lastKeyTime > lastHijackAt;
-            if (!backSinceHijack) {
-                if (prefs.isVerboseLogging()) {
-                    Log.i(TAG, "Auto-hijack skipped: within " + debounce + "ms guard,"
-                            + " no Back since last hijack (double-press escape "
-                            + (prefs.isEscapeDoublePress() ? "on" : "off") + ")");
-                }
-                return;
-            }
-        }
-        // lastHijackAt is armed inside launchTarget on success.
-        launchTarget(target, "Redirected Home (from " + prev + ")");
+        // Home belongs to the user. No inferred button press or grace-period
+        // relaunch is allowed in this Plex autostart variant.
     }
 
     /** Framework/system packages whose windows are transient decor, never a learn target. */
@@ -1172,10 +960,9 @@ public class HijackService extends AccessibilityService {
      * A "Map custom buttons" slot bound to an app window (Apps, Live TV, Guide, ...)
      * instead of a keycode: the branded button opened its app, so we redirect to the
      * target launcher. Instant apart from the brief window flash that is unavoidable,
-     * since the system opens the branded app before we can react. The first launch is
-     * unmasked; a relaunch after Amazon home covered the app (see
-     * {@link #handleAmazonHomeArrival}) is masked, because that one can land in the
-     * app-switch lock.
+     * since the system opens the branded app before we can react. This fork dispatches
+     * one launch per observed mapping activation, with a duplicate-event guard and no
+     * delayed reassertion over a subsequent user choice.
      */
     private void handleWindowLaunch(final String brandedPkg) {
         String target = prefs.getTargetPackage();
@@ -1192,75 +979,18 @@ public class HijackService extends AccessibilityService {
      */
     private void handleWindowLaunch(final String brandedPkg, final String appToLaunch,
                                     String reason) {
-        // Deliberately NOT gated by bypassUntil: a mapped button is an explicit user
-        // action and must redirect even right after an escape-to-Amazon-home (which sets
-        // the bypass to hold back the AUTO hijack, not explicit presses). The debounce
-        // only dedups the several window events a single press emits.
-        long now = System.currentTimeMillis();
-        if (now - lastHijackAt < HIJACK_DEBOUNCE_MS) {
-            if (prefs.isVerboseLogging()) {
-                Log.i(TAG, "windowLaunch skip: debounce " + (now - lastHijackAt) + "ms since last");
-            }
-            return;
-        }
-        // Leaving the app this button opens drops the user back onto the branded surface
-        // that opened it, and redirecting again would lock them inside that app with no
-        // way out. The surface only moves the foreground trackers when it reports a real
-        // content class, so the app they came from is in one tracker or the other. A fresh
-        // Back is required as well, otherwise pressing the button again from inside the
-        // app would toggle between the app and the launcher instead of just reopening it.
-        String cameFrom = brandedPkg != null && brandedPkg.equals(currentForegroundPkg)
-                ? previousForegroundPkg
-                : currentForegroundPkg;
-        boolean backedOut = lastKeyCode == KeyEvent.KEYCODE_BACK
-                && now - lastKeyTime < BACK_OUT_WINDOW_MS;
-        if (appToLaunch.equals(cameFrom) && backedOut
-                && now - lastWindowLaunchAt >= LAUNCH_CHAIN_MS) {
-            String target = prefs.getTargetPackage();
-            if (target == null || target.isEmpty()) {
-                if (prefs.isVerboseLogging()) {
-                    Log.i(TAG, "windowLaunch skip: back out of " + appToLaunch + ", no target set");
-                }
-                return;
-            }
-            launchTarget(target, "Back out of " + appToLaunch + " onto " + brandedPkg
-                    + ", going to the target", false);
-            return;
-        }
-        // Nothing to re-assert after a launch that never happened (target uninstalled).
-        if (!launchTarget(appToLaunch, reason, false)) return;
-        lastWindowLaunchAt = now;
-        // Only the Apps grid gets the grace window. It is the one surface that starts
-        // Amazon home by itself, so only there can an arrival be the button rather than
-        // the user. Measured 2026-09-15 with Prime Video, Netflix and Disney+ all mapped:
-        // every single Amazon home after those three followed a real Home key, so a grace
-        // window there did nothing but swallow Home presses, up to three in a row.
-        pendingButtonApp = AMAZON_APPS_GRID.equals(brandedPkg) ? appToLaunch : null;
-        pendingButtonRelaunches = 0;
-        pendingRelaunchAt = 0L;
-        // Some branded apps keep launching activities that re-cover the target right
-        // after (e.g. Prime: DeepLinkRouting then Landing). Re-assert the target ONLY if
-        // that same branded app is what came back to the front, so we win the launch-chain
-        // race without yanking the user back if they deliberately navigated elsewhere in
-        // the meantime (or if the redirect was already clean and the target is up).
-        if (mainHandler != null && brandedPkg != null) {
-            // Drop the previous press's re-asserts: they aim at an older branded package
-            // and target, and letting both sets run stacks launches on a slow device.
-            if (pendingReassert != null) mainHandler.removeCallbacks(pendingReassert);
-            pendingReassert = new Runnable() {
-                @Override public void run() {
-                    if (brandedPkg.equals(currentForegroundPkg)) {
-                        launchTarget(appToLaunch, "Redirect re-assert", false);
-                    }
-                }
-            };
-            mainHandler.postDelayed(pendingReassert, 700);
-            mainHandler.postDelayed(pendingReassert, 1500);
+        if (autostart != null) autostart.cancel("explicit mapped button");
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastExplicitWindowAt < 2000 && appToLaunch.equals(lastExplicitWindowTarget)) return;
+        if (launchTarget(appToLaunch, reason, false)) {
+            lastExplicitWindowAt = now;
+            lastExplicitWindowTarget = appToLaunch;
         }
     }
 
     /** As {@link #handleWindowLaunch} but the slot's action is "go to Amazon home". */
     private void handleWindowAmazon() {
+        if (autostart != null) autostart.cancel("explicit Amazon button");
         long now = System.currentTimeMillis();
         if (now - lastHijackAt < HIJACK_DEBOUNCE_MS) return;
         redirectToAmazonHome("Mapped app button to Amazon home");
@@ -1363,6 +1093,7 @@ public class HijackService extends AccessibilityService {
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         if (event == null) return false;
+        if (autostart != null) autostart.key(event);
         int keyCode = event.getKeyCode();
         boolean isDown = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean isUp = event.getAction() == KeyEvent.ACTION_UP;
@@ -2368,23 +2099,26 @@ public class HijackService extends AccessibilityService {
     }
 
     @Override
+    public void onDestroy() {
+        if (autostart != null) autostart.close();
+        if (mainHandler != null) mainHandler.removeCallbacksAndMessages(null);
+        if (sInstance == this) sInstance = null;
+        super.onDestroy();
+    }
+
+    @Override
     public boolean onUnbind(android.content.Intent intent) {
         cancelMenuLongPress();
-        // Flush every pending main-handler post (the wake-from-standby
-        // runnable in particular) so nothing fires after the service
-        // disconnects.
+        // Drop all callbacks on disconnect. The coordinator persists lifecycle state
+        // and explicitly reconstructs only an unfinished session on reconnection.
         if (mainHandler != null) {
             mainHandler.removeCallbacksAndMessages(null);
         }
         consumedDownKey = -1;
         cancelMask();
-        if (screenOnReceiver != null) {
-            try {
-                unregisterReceiver(screenOnReceiver);
-            } catch (Exception ignored) {
-                // already unregistered, or never registered on this run
-            }
-            screenOnReceiver = null;
+        if (autostart != null) {
+            autostart.close();
+            autostart = null;
         }
         if (sInstance == this) sInstance = null;
         return super.onUnbind(intent);

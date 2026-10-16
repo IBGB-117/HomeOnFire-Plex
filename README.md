@@ -1,3 +1,17 @@
+# HomeOnFire Plex Test (fork)
+
+This fork adds one-session Plex autostart after observed boot/standby wake, with
+persistent completion and free Home/navigation afterwards. It uses the separate
+package `io.github.ibgb117.homeonfireplex.test`; the original application is not
+replaced. **Fire OS 8.1.8.5 device validation is pending.**
+
+See [Plex behavior, Linux/Cloud builds, signing, CI and acceptance tests](docs/PLEX_AUTOSTART.md).
+The original project documentation follows for provenance; its package names,
+Home-replacement behavior and installation instructions describe upstream, not this
+test variant. Do not use upstream install commands for this fork.
+
+---
+
 <p align="center">
   <img src="docs/banner.png" alt="Home on Fire" width="640">
 </p>

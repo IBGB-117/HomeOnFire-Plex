@@ -1,0 +1,95 @@
+name: Plex test APK
+
+on:
+  push:
+    branches: [main, feat/plex-wake-autostart]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plex-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TOOLCHAIN_DIR: ${{ github.workspace }}/.tools
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install checksum-pinned toolchain
+        run: bash scripts/setup-android.sh
+      - name: State machine and foreground tests
+        run: JAVA_HOME="$TOOLCHAIN_DIR/jdk-21.0.8+9" bash scripts/test.sh
+      - name: Build and verify isolated debug APK
+        run: bash scripts/build.sh debug
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plex-test-debug-${{ github.sha }}
+          path: |
+            build/homeonfire-plex-test-debug.apk
+            build/homeonfire-plex-test-debug.apk.sha256
+            build/homeonfire-plex-test-debug.apk.badging.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  signed:
+    # Never expose the permanent key to pull-request code (including same-repo PRs).
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TOOLCHAIN_DIR: ${{ github.workspace }}/.tools
+    steps:
+      - name: Check permanent signing configuration
+        id: signing
+        env:
+          KEYSTORE: ${{ secrets.APK_SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.APK_SIGNING_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.APK_SIGNING_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.APK_SIGNING_KEY_ALIAS }}
+        run: |
+          if [[ -n "$KEYSTORE" && -n "$STORE_PASSWORD" && -n "$KEY_PASSWORD" && -n "$KEY_ALIAS" ]]; then
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Permanent signing is not configured. Debug APKs do not provide a stable update signature. See docs/PLEX_AUTOSTART.md.'
+          fi
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: steps.signing.outputs.configured == 'true'
+      - name: Install checksum-pinned toolchain
+        if: steps.signing.outputs.configured == 'true'
+        run: bash scripts/setup-android.sh
+      - name: Build with permanent test signature
+        if: steps.signing.outputs.configured == 'true'
+        env:
+          APK_SIGNING_KEYSTORE_BASE64: ${{ secrets.APK_SIGNING_KEYSTORE_BASE64 }}
+          APK_SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_STORE_PASSWORD }}
+          APK_SIGNING_KEY_PASSWORD: ${{ secrets.APK_SIGNING_KEY_PASSWORD }}
+          APK_SIGNING_KEY_ALIAS: ${{ secrets.APK_SIGNING_KEY_ALIAS }}
+        run: |
+          umask 077
+          export APK_SIGNING_KEYSTORE="$RUNNER_TEMP/plex-test-signing.p12"
+          trap 'rm -f "$APK_SIGNING_KEYSTORE"' EXIT
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ['APK_SIGNING_KEYSTORE']).write_bytes(
+              base64.b64decode(os.environ['APK_SIGNING_KEYSTORE_BASE64'], validate=True))
+          PY
+          unset APK_SIGNING_KEYSTORE_BASE64
+          bash scripts/build.sh release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.signing.outputs.configured == 'true'
+        with:
+          name: plex-test-signed-${{ github.sha }}
+          path: |
+            build/homeonfire-plex-test.apk
+            build/homeonfire-plex-test.apk.sha256
+            build/homeonfire-plex-test.apk.badging.txt
+          if-no-files-found: error
+          retention-days: 30

@@ -38,3 +38,7 @@ Thumbs.db
 
 # Files staged for the user to review and delete
 _trash/
+
+# Local Linux toolchain and development-only signing material
+.tools/
+.local-signing/

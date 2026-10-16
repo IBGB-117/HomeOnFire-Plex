@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 toolicious
-package io.github.toolicious.homeonfire;
+package io.github.ibgb117.homeonfireplex.test;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -53,12 +53,10 @@ public class Prefs {
     private static final String KEY_MASK_BLACK = "mask_black_screen";
 
     /**
-     * Empty by default; the user is expected to pick a target via the
-     * configuration screen before anything is launched. The hijack,
-     * boot launcher and "Open target" button all early-return on an
-     * empty target package.
+     * Plex is the default for this isolated test fork. An existing explicit
+     * choice remains unchanged, including an explicitly empty target.
      */
-    private static final String DEFAULT_TARGET = "";
+    private static final String DEFAULT_TARGET = "com.plexapp.android";
 
     private final SharedPreferences sp;
 
@@ -84,9 +82,11 @@ public class Prefs {
         sp.edit().putBoolean(KEY_BOOT, enabled).apply();
     }
 
-    /** Defaults to true so the redirect works right after install. */
+    /** Home replacement is always disabled in this autostart-only test fork. */
     public boolean isHijackEnabled() {
-        return sp.getBoolean(KEY_ENABLED, true);
+        // This parallel test app is an autostarter, never a Home replacement.
+        // Keep the old key untouched for settings compatibility, but do not act on it.
+        return false;
     }
 
     public void setHijackEnabled(boolean enabled) {
