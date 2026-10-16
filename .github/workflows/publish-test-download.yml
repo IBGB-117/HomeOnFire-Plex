@@ -1,0 +1,35 @@
+name: Publish existing signed test APK
+
+on:
+  push:
+    branches: [feat/plex-wake-autostart]
+    paths:
+      - .github/workflows/publish-test-download.yml
+      - homeonfire-plex-test.apk
+      - homeonfire-plex-test.apk.sha256
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-plex-test-1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # This distributes the existing signed binary. It does not build or access keys.
+    if: github.repository == 'IBGB-117/HomeOnFire-Plex'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verify existing APK checksum
+        run: sha256sum -c homeonfire-plex-test.apk.sha256
+      - name: Upload signed test APK and publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload plex-test-1 homeonfire-plex-test.apk homeonfire-plex-test.apk.sha256 --clobber
+          gh release edit plex-test-1 --draft=false --prerelease --latest=false
