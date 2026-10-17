@@ -1,5 +1,11 @@
 # Dauerhafte Signatur für die Test-App einrichten
 
+**Status:** Der Eigentümer hat diese Einrichtung erfolgreich abgeschlossen; der
+signierte Test.3-Build ist veröffentlicht. Die folgenden Abschnitte dokumentieren
+die Einrichtung. Den vorhandenen Schlüssel und seine Sicherung behalten; für
+Updates keine neue Signatur erzeugen. Zur Installation siehe
+[Test.3 herunterladen und installieren](INSTALL_TEST_3_DE.md).
+
 Die einmalige Neuinstallation der Test-App ist freigegeben. Der bisherige private
 Testschlüssel ist verloren; die Cloud-Anbindung darf keine Actions-Secrets setzen
 (HTTP 403). Deshalb muss der neue Schlüssel auf deinem dauerhaft gespeicherten PC
@@ -51,7 +57,9 @@ Fehlermeldung weitergeben, niemals die beiden privaten Dateien oder deren Inhalt
 
 ## Test.3 automatisch bauen und veröffentlichen
 
-Nach erfolgreicher Schlüsselübertragung:
+Einmaliger Veröffentlichungsbefehl nach erfolgreicher Schlüsselübertragung
+(für Test.3 bereits erfolgreich ausgeführt; ein öffentliches Release wird nicht
+ersetzt):
 
 ```bash
 gh workflow run apk.yml --repo IBGB-117/HomeOnFire-Plex --ref feat/plex-wake-autostart -f release_test3=true
@@ -64,7 +72,6 @@ Nur bei Erfolg veröffentlicht er `plex-test-3` als öffentliche Vorabversion.
 Ein bereits öffentliches Test.3-APK wird nicht überschrieben. Pull-Request-Jobs
 bekommen keine Signaturschlüssel. Der PR wird nicht gemergt.
 
-**Die installierte Test-App vorerst behalten.** Erst die neue APK herunterladen
-und prüfen; danach kann ausschließlich `io.github.ibgb117.homeonfireplex.test`
+**Die APK vor der Deinstallation herunterladen und prüfen.** Danach kann ausschließlich `io.github.ibgb117.homeonfireplex.test`
 neu installiert werden. Einstellungen und Berechtigungen dieser Test-App gehen
 bei ihrer Deinstallation verloren. Die Original-App und Plex bleiben erhalten.

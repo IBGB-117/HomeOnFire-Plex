@@ -5,14 +5,14 @@ persistent completion and free Home/navigation afterwards. It uses the separate
 package `io.github.ibgb117.homeonfireplex.test`; the original application is not
 replaced. **Fire OS 8.1.8.5 device validation is pending.**
 
-**[Download the signed test APK](https://github.com/IBGB-117/HomeOnFire-Plex/releases/download/plex-test-2/homeonfire-plex-test.apk)** (direct file download for Fire TV Downloader).
+**[Download the signed test.3 APK](https://github.com/IBGB-117/HomeOnFire-Plex/releases/download/plex-test-3/homeonfire-plex-test.apk)** (public direct download; no GitHub login required).
 
-The linked download is still **test.2**. The boot-preparation Settings fix on this
-PR branch is not yet published as a signed test.3 APK. A one-time reinstall of
-the same TEST package is agreed because its old private signing key is unavailable.
-[Set up and back up the new signature on your PC](docs/SIGNING_SETUP_DE.md) to enable
-the prepared GitHub release build. Do not uninstall the installed test app until
-the replacement APK is available and verified.
+Test.3 includes the boot-preparation Settings fix and uses the new permanently
+backed-up test signature. A **one-time reinstall of the TEST app** is required when
+migrating from test.2 because its old private signing key was lost. The original
+app remains untouched. See the [German download/install commands](docs/INSTALL_TEST_3_DE.md).
+The root `homeonfire-plex-test.apk` on this PR branch is byte-identical to the release.
+Keep the [PC signing backup](docs/SIGNING_SETUP_DE.md) for future updates.
 
 See [Plex behavior, Linux/Cloud builds, signing, CI and acceptance tests](docs/PLEX_AUTOSTART.md).
 The original project documentation follows for provenance; its package names,

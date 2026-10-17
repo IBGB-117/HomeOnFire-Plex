@@ -58,7 +58,7 @@ start Plex again. Only another observed boot/wake may start a new session. Termi
 state and command cooldown are committed before reporting success or dispatching a
 command. If persistence fails, no launch permission is returned.
 
-## Fire OS 8.1.8.5 boot-readiness correction (pending test.3)
+## Fire OS 8.1.8.5 boot-readiness correction (test.3)
 
 User-provided device diagnostics distinguish two different outcomes:
 
@@ -71,7 +71,7 @@ User-provided device diagnostics distinguish two different outcomes:
   That specific wake succeeded. It does not establish that every TV-power or
   standby scenario succeeds, nor explain the separately reported Amazon Shop CS2.
 
-The pending correction classifies only this exact Settings package separately.
+The test.3 correction classifies only this exact Settings package separately.
 During a BOOT session, before a first trustworthy Home/target observation and before any
 launch/target candidate, the session waits without a deadline or a launch over
 Settings. The first safe Home or target observation ends this boot-only exemption, and this boundary is
@@ -87,15 +87,16 @@ checks an arbitrarily long Settings wait, manual takeover, process replacement,
 Settings after Home/before confirmation (also across unknown windows and process
 replacement), and the exclusion of Amazon Shop.
 
-**Update signing is pending.** The previous private test key is absent from the
-restored cloud workspace, no backup is known, and the GitHub integration cannot
-access Actions Secrets (403). No replacement key is silently generated for an
-in-place update. Do not install a fresh CI debug APK over test.2. The current
-published test.2 download and its signing certificate remain unchanged. A new
-signing key must be secured outside the ephemeral workspace. The owner selected
-a one-time reinstall of the existing TEST package and accepted loss of its test
-preferences; the package identity is retained. The original application's package
-and data remain untouched.
+**Test.3 is published with a new backed-up permanent test key.** The previous private
+test key was lost in the restored cloud workspace; no backup was known. The owner
+selected a one-time reinstall of the existing TEST package and accepted loss of
+its preferences. The owner generated and byte-verified the replacement backup on
+their persistent PC and uploaded the four signing secrets plus certificate pin to
+GitHub. The integration's Secrets access remains denied (403), but Actions now has
+the required bindings and built/signed/published test.3 successfully. The release
+APK was independently downloaded and verified again, including the new boot logic
+in its DEX. The published test.2 download remains unchanged. The original app and
+its data remain untouched; see [test.3 installation](INSTALL_TEST_3_DE.md).
 
 ## User control and remote mappings
 
@@ -184,9 +185,10 @@ signing with the same external test key. The validator explicitly checks resourc
 storage and the actual payload offset from the ZIP local header. Four packaging
 regression tests cover compressed, misaligned, correctly aligned and differing
 local/central ZIP padding. The new check also rejects the original distributed APK.
-The distribution workflow checks this rule before uploading. Use the `plex-test-2`
-release URL to avoid reusing a cached test.1 download. Device installation and Fire
-OS execution are still separate acceptance checks and have not been performed.
+The release build checks this rule before uploading. The historical `plex-test-2`
+download remains available; current installs should use `plex-test-3` instead of a
+cached test.1 file. User-provided test.2 device observations are documented above;
+the test.3 boot correction still needs target-device acceptance.
 
 ## Linux / Codex Cloud builds
 
@@ -261,6 +263,11 @@ configuration, dispatch `apk.yml` on `feat/plex-wake-autostart` with boolean inp
 `release_test3=true`. Only this trusted manual run can publish a new `plex-test-3`
 release after tests, signing and certificate-pin verification. Existing public
 test.3 binaries cannot be replaced; the old test.2 download remains unchanged.
+The obsolete workflow that uploaded the root APK over test.2 was removed before
+updating that file to test.3, so later repository downloads cannot rewrite the
+historical release. The current release was built from commit
+`de2aa94f4ae24d31c35f960f420b06b9b51d9e20` in
+[Actions run 39015357903](https://github.com/IBGB-117/HomeOnFire-Plex/actions/runs/39015357903).
 
 For a local permanent-key build, set `APK_SIGNING_KEYSTORE`,
 `APK_SIGNING_STORE_PASSWORD`, `APK_SIGNING_KEY_PASSWORD`, `APK_SIGNING_KEY_ALIAS`
