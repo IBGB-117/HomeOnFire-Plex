@@ -39,6 +39,10 @@ final class AutostartStore implements AutostartSession.Persistence {
         s.checks = sp.getInt("checks", 0);
         s.target = sp.getString("target", "");
         s.reason = sp.getString("reason", "baseline");
+        // Old active sessions used reason="boot"/"wake". Existing terminal
+        // sessions stay terminal; adding readiness metadata never rearms them.
+        s.bootSession = sp.getBoolean("bootSession", "boot".equals(s.reason));
+        s.homeObserved = sp.getBoolean("homeObserved", s.attempts > 0);
         return s;
     }
 
@@ -49,6 +53,7 @@ final class AutostartStore implements AutostartSession.Persistence {
                 .putBoolean("bootAwaitingWake", s.bootAwaitingWake)
                 .putBoolean("bootNotified", s.bootNotified).putLong("startedAt", s.startedAt)
                 .putBoolean("manualWhileAsleep", s.manualWhileAsleep)
+                .putBoolean("bootSession", s.bootSession).putBoolean("homeObserved", s.homeObserved)
                 .putLong("nextAttemptAt", s.nextAttemptAt).putInt("attempts", s.attempts)
                 .putInt("checks", s.checks).putString("target", s.target)
                 .putString("reason", s.reason).commit()) {

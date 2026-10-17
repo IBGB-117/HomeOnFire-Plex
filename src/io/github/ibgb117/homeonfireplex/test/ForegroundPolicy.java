@@ -18,6 +18,11 @@ final class ForegroundPolicy {
         if (pkg.equals("android") || pkg.equals("com.android.systemui")) {
             return AutostartSession.Surface.UNKNOWN;
         }
+        // Narrow, observed Fire OS boot surface. Do not whitelist Amazon apps
+        // generally: Shop, content apps and the config app must still win.
+        if (pkg.equals("com.amazon.tv.settings.v2")) {
+            return AutostartSession.Surface.SYSTEM_SETTINGS;
+        }
         return AutostartSession.Surface.OTHER;
     }
 

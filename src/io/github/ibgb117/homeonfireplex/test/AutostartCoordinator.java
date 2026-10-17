@@ -266,7 +266,8 @@ final class AutostartCoordinator {
     String summary() {
         AutostartSession.State s = session.state;
         return "session " + s.serial + " / " + s.status + " / " + s.reason
-                + " / attempts " + s.attempts + " / " + (s.sleeping ? "asleep" : "awake");
+                + " / attempts " + s.attempts + " / " + (s.sleeping ? "asleep" : "awake")
+                + (s.bootSession && !s.homeObserved && session.active() ? " / waiting for Home" : "");
     }
 
     void close() {

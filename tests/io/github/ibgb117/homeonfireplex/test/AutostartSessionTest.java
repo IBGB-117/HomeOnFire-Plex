@@ -205,7 +205,7 @@ public final class AutostartSessionTest {
             eq(UNKNOWN, ForegroundPolicy.classify(PLEX, PLEX, false, true, false, false));
             eq(UNKNOWN, ForegroundPolicy.classify(PLEX, PLEX, true, false, false, false));
             eq(OTHER, ForegroundPolicy.classify(PLEX, "another.app", true, true, false, false));
-            eq(OTHER, ForegroundPolicy.classify(PLEX, "com.amazon.tv.settings.v2", true, true, false, false));
+            eq(SYSTEM_SETTINGS, ForegroundPolicy.classify(PLEX, "com.amazon.tv.settings.v2", true, true, false, false));
             eq(UNKNOWN, ForegroundPolicy.classify(PLEX, "android", true, true, false, false));
         });
         test("Home without window events needs live Home evidence", () -> {
@@ -216,6 +216,77 @@ public final class AutostartSessionTest {
             eq(UNKNOWN, ForegroundPolicy.classify(PLEX, home, true, false, true, false));
             yes(ForegroundPolicy.isHomeViewId(home + ":id/nav-tab-movies_and_tv_home_tab"));
             yes(!ForegroundPolicy.isHomeViewId(home + ":id/nav-tab-apps_for_you_tab"));
+        });
+        test("observed Fire OS boot Settings waits instead of cancelling session", () -> {
+            Rig r = new Rig();
+            r.session.boot("boot:12", false, 27782043, true);
+            r.session.boot("boot:13", false, 21815, true);
+            r.session.configure(true, PLEX);
+            eq(WAIT, r.session.check(23366, SYSTEM_SETTINGS));
+            eq(ACTIVE, r.session.state.status); eq(0, r.session.state.attempts);
+            r.session.boot("boot:13", true, 69137, true);
+            eq(WAIT, r.session.check(69140, SYSTEM_SETTINGS));
+            eq(1L, r.session.state.serial);
+            eq(LAUNCH, r.session.check(70000, HOME));
+            r.success(71000);
+            eq(NONE, r.session.check(73000, SYSTEM_SETTINGS));
+            eq(NONE, r.session.check(74000, HOME));
+        });
+        test("boot Settings wait has no expiry and never launches over Settings", () -> {
+            Rig r = new Rig(); r.boot(true);
+            for (long t : new long[]{1000, 91000, 301000, 86400000}) {
+                eq(WAIT, r.session.check(t, SYSTEM_SETTINGS));
+                r.session.nextCheckDelay(t);
+            }
+            eq(ACTIVE, r.session.state.status); eq(0, r.session.state.attempts);
+            r.restart(); eq(WAIT, r.session.check(86401000, SYSTEM_SETTINGS));
+            eq(LAUNCH, r.session.check(86402000, HOME));
+        });
+        test("manual navigation while boot Settings is shown always cancels", () -> {
+            Rig r = new Rig(); r.boot(true); r.session.check(1000, SYSTEM_SETTINGS);
+            r.session.userAction("manual Back"); r.restart();
+            eq(NONE, r.session.check(2000, HOME)); eq(CANCELLED, r.session.state.status);
+            r.session.boot("boot:1", true, 3000, true);
+            eq(NONE, r.session.check(4000, HOME));
+        });
+        test("Settings restored on wake retains foreground priority", () -> {
+            Rig r = new Rig(); r.boot(true); r.success(1000);
+            r.session.power(false, 3000); r.session.power(true, 4000);
+            r.session.configure(true, PLEX);
+            eq(NONE, r.session.check(5000, SYSTEM_SETTINGS));
+            eq(CANCELLED, r.session.state.status); eq(0, r.session.state.attempts);
+        });
+        test("first safe Home ends boot exemption even before first launch", () -> {
+            Rig r = new Rig(); r.boot(true);
+            eq(WAIT, r.session.check(100, HOME));
+            yes(r.saved.homeObserved); eq(0, r.saved.attempts);
+            r.restart();
+            eq(NONE, r.session.check(200, SYSTEM_SETTINGS));
+            eq(CANCELLED, r.session.state.status);
+        });
+        test("Settings after an existing target candidate is never boot preparation", () -> {
+            Rig r = new Rig(); r.boot(true); r.session.check(1000, TARGET);
+            eq(NONE, r.session.check(1100, SYSTEM_SETTINGS));
+            eq(CANCELLED, r.session.state.status);
+        });
+        test("boot Settings exception never covers Amazon Shop or other apps", () -> {
+            eq(OTHER, ForegroundPolicy.classify(PLEX, "com.amazon.shoptv.client", true, true, false, false));
+            eq(OTHER, ForegroundPolicy.classify(PLEX, "com.amazon.tv.settings.v2.fake", true, true, false, false));
+            eq(OTHER, ForegroundPolicy.classify(PLEX, "io.github.ibgb117.homeonfireplex.test", true, true, false, false));
+            Rig r = new Rig(); r.boot(true); r.session.check(1000, SYSTEM_SETTINGS);
+            eq(NONE, r.session.check(2000, OTHER)); eq(CANCELLED, r.session.state.status);
+        });
+        test("recorded successful wake remains a single prompt launch", () -> {
+            Rig r = new Rig(); r.boot(true); r.success(1000);
+            r.session.power(false, 721577); r.session.power(true, 726849);
+            r.session.configure(true, PLEX);
+            eq(WAIT, r.session.check(727392, HOME));
+            eq(LAUNCH, r.session.check(727668, HOME));
+            eq(WAIT, r.session.check(728161, TARGET));
+            eq(COMPLETE, r.session.check(729191, TARGET));
+            eq(1, r.session.state.attempts);
+            eq(NONE, r.session.check(800000, HOME));
+            eq(NONE, r.session.check(900000, SYSTEM_SETTINGS));
         });
         test("generated duplicate event sequences never rearm terminal state", () -> {
             Random random = new Random(117);

@@ -57,6 +57,43 @@ start Plex again. Only another observed boot/wake may start a new session. Termi
 state and command cooldown are committed before reporting success or dispatching a
 command. If persistence fails, no launch permission is returned.
 
+## Fire OS 8.1.8.5 boot-readiness correction (pending test.3)
+
+User-provided device diagnostics distinguish two different outcomes:
+
+- The boot session encountered `com.amazon.tv.settings.v2` about 23 seconds after
+  boot and was immediately cancelled as `OTHER`, before dispatching a Plex start.
+  The available trace cannot establish whether Settings was opened automatically
+  or deliberately; its mere presence was too weak to infer user takeover.
+- A later observed wake dispatched one Plex start at about 0.8 seconds, observed
+  its foreground at about 1.3 seconds and confirmed success at about 2.3 seconds.
+  That specific wake succeeded. It does not establish that every TV-power or
+  standby scenario succeeds, nor explain the separately reported Amazon Shop CS2.
+
+The pending correction classifies only this exact Settings package separately.
+During a BOOT session, before a first trustworthy Home observation and before any
+launch/target candidate, the session waits without a deadline or a launch over
+Settings. The first safe Home ends this boot-only exemption, and this boundary is
+persisted across service replacement. On wake, after Home, or after a target
+candidate, Settings retains normal foreground priority and cancels the session.
+Any observed manual key/click/navigation still cancels immediately. Content apps,
+Amazon Shop and this configuration app are never covered by the exception. No new
+boot/wake signal or rearming of completed/cancelled sessions is introduced.
+
+The diagnostics now explicitly record `waiting for boot Settings to yield to Home`.
+Regression coverage replays the reported boot ordering and the successful wake,
+checks an arbitrarily long Settings wait, manual takeover, process replacement,
+Settings after Home/before confirmation, and the exclusion of Amazon Shop.
+
+**Update signing is pending.** The previous private test key is absent from the
+restored cloud workspace, no backup is known, and the GitHub integration cannot
+access Actions Secrets (403). No replacement key is silently generated for an
+in-place update. Do not install a fresh CI debug APK over test.2. The current
+published test.2 download and its signing certificate remain unchanged. A new
+signing key must be secured outside the ephemeral workspace, with an explicit
+choice of a separate test-package identity or a one-time reinstall of the old TEST
+package. The original application's package and data remain untouched.
+
 ## User control and remote mappings
 
 The test variant always disables automatic Home replacement, including focus

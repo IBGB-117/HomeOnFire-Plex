@@ -6,7 +6,7 @@ package io.github.ibgb117.homeonfireplex.test;
  */
 final class AutostartSession {
     enum Status { IDLE, ACTIVE, SUCCEEDED, CANCELLED }
-    enum Surface { TARGET, HOME, UNKNOWN, OTHER }
+    enum Surface { TARGET, HOME, UNKNOWN, SYSTEM_SETTINGS, OTHER }
     enum Action { NONE, WAIT, LAUNCH, COMPLETE }
     static final long CONFIRM_MS = 1_000;
     static final long MAX_INTERVAL_MS = 60_000;
@@ -16,6 +16,7 @@ final class AutostartSession {
         long serial, startedAt, nextAttemptAt;
         int attempts, checks;
         boolean sleeping, bootAwaitingWake, bootNotified, manualWhileAsleep;
+        boolean bootSession, homeObserved;
         Status status = Status.IDLE;
         String reason = "baseline";
         String target = "";
@@ -28,6 +29,7 @@ final class AutostartSession {
     private final Events events;
     // Never trust a foreground candidate across a process/service reconnection.
     private long targetSince = -1;
+    private boolean bootWaitLogged;
 
     AutostartSession(State state, Persistence persistence, Events events) {
         this.state = state;
@@ -96,8 +98,11 @@ final class AutostartSession {
         state.checks = 0;
         state.target = "";
         state.reason = manual ? "manual input during wake transition" : source;
+        state.bootSession = "boot".equals(source);
+        state.homeObserved = false;
         state.bootAwaitingWake = awaitingWake;
         targetSince = -1;
+        bootWaitLogged = false;
         persist("session started: " + source);
     }
 
@@ -134,6 +139,22 @@ final class AutostartSession {
 
     Action check(long now, Surface surface) {
         if (!active() || state.sleeping) return Action.NONE;
+        if (surface == Surface.SYSTEM_SETTINGS) {
+            // Fire OS 8 can expose Settings during boot preparation without any
+            // remote input. Never launch over it, but don't mistake it for a
+            // deliberate takeover before the boot session has reached Home.
+            // Actual input still cancels synchronously through userAction().
+            if (state.bootSession && !state.homeObserved && state.attempts == 0
+                    && targetSince < 0) {
+                if (!bootWaitLogged) {
+                    log("waiting for boot Settings to yield to Home; no launch permitted");
+                    bootWaitLogged = true;
+                }
+                return Action.WAIT;
+            }
+            cancel("Settings owns foreground after boot preparation or during wake");
+            return Action.NONE;
+        }
         if (surface == Surface.OTHER) {
             cancel("user/app owns foreground");
             return Action.NONE;
@@ -155,6 +176,10 @@ final class AutostartSession {
             return Action.NONE;
         }
         targetSince = -1;
+        if (surface == Surface.HOME && !state.homeObserved) {
+            state.homeObserved = true;
+            persist("safe Home observed; launch eligibility established");
+        }
         if (surface == Surface.HOME && !state.target.isEmpty() && now >= state.nextAttemptAt) {
             // Commit the cooldown BEFORE dispatch. A failed command or process death
             // must not create an unthrottled launch loop.
@@ -181,6 +206,10 @@ final class AutostartSession {
 
     private void persist(String message) {
         persistence.save(state);
+        log(message);
+    }
+
+    private void log(String message) {
         events.log("session=" + state.boot + "/" + state.serial + " state=" + state.status
                 + " " + message);
     }
