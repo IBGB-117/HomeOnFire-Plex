@@ -267,7 +267,7 @@ final class AutostartCoordinator {
         AutostartSession.State s = session.state;
         return "session " + s.serial + " / " + s.status + " / " + s.reason
                 + " / attempts " + s.attempts + " / " + (s.sleeping ? "asleep" : "awake")
-                + (s.bootSession && !s.homeObserved && session.active() ? " / waiting for Home" : "");
+                + (s.bootSession && !s.bootReady && session.active() ? " / waiting for Home" : "");
     }
 
     void close() {

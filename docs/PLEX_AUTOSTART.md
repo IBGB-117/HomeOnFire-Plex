@@ -3,7 +3,8 @@
 Fork of [toolicious/home-on-fire](https://github.com/toolicious/home-on-fire),
 GPL-3.0-or-later. Upstream copyright notices and LICENSE are retained.
 Target device for acceptance: Fire TV Stick 4K Plus, Fire OS 8.1.8.5.
-**This device/firmware has not yet been tested with this change.**
+**Device observations for test.2 are documented below; the boot-readiness
+correction is not yet validated on hardware.**
 
 ## Isolated test application
 
@@ -71,9 +72,9 @@ User-provided device diagnostics distinguish two different outcomes:
   standby scenario succeeds, nor explain the separately reported Amazon Shop CS2.
 
 The pending correction classifies only this exact Settings package separately.
-During a BOOT session, before a first trustworthy Home observation and before any
+During a BOOT session, before a first trustworthy Home/target observation and before any
 launch/target candidate, the session waits without a deadline or a launch over
-Settings. The first safe Home ends this boot-only exemption, and this boundary is
+Settings. The first safe Home or target observation ends this boot-only exemption, and this boundary is
 persisted across service replacement. On wake, after Home, or after a target
 candidate, Settings retains normal foreground priority and cancels the session.
 Any observed manual key/click/navigation still cancels immediately. Content apps,
@@ -83,7 +84,8 @@ boot/wake signal or rearming of completed/cancelled sessions is introduced.
 The diagnostics now explicitly record `waiting for boot Settings to yield to Home`.
 Regression coverage replays the reported boot ordering and the successful wake,
 checks an arbitrarily long Settings wait, manual takeover, process replacement,
-Settings after Home/before confirmation, and the exclusion of Amazon Shop.
+Settings after Home/before confirmation (also across unknown windows and process
+replacement), and the exclusion of Amazon Shop.
 
 **Update signing is pending.** The previous private test key is absent from the
 restored cloud workspace, no backup is known, and the GitHub integration cannot

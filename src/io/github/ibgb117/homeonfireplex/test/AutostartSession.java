@@ -16,7 +16,7 @@ final class AutostartSession {
         long serial, startedAt, nextAttemptAt;
         int attempts, checks;
         boolean sleeping, bootAwaitingWake, bootNotified, manualWhileAsleep;
-        boolean bootSession, homeObserved;
+        boolean bootSession, bootReady;
         Status status = Status.IDLE;
         String reason = "baseline";
         String target = "";
@@ -99,7 +99,7 @@ final class AutostartSession {
         state.target = "";
         state.reason = manual ? "manual input during wake transition" : source;
         state.bootSession = "boot".equals(source);
-        state.homeObserved = false;
+        state.bootReady = false;
         state.bootAwaitingWake = awaitingWake;
         targetSince = -1;
         bootWaitLogged = false;
@@ -142,9 +142,9 @@ final class AutostartSession {
         if (surface == Surface.SYSTEM_SETTINGS) {
             // Fire OS 8 can expose Settings during boot preparation without any
             // remote input. Never launch over it, but don't mistake it for a
-            // deliberate takeover before the boot session has reached Home.
+            // deliberate takeover before the boot session has reached Home or the target.
             // Actual input still cancels synchronously through userAction().
-            if (state.bootSession && !state.homeObserved && state.attempts == 0
+            if (state.bootSession && !state.bootReady && state.attempts == 0
                     && targetSince < 0) {
                 if (!bootWaitLogged) {
                     log("waiting for boot Settings to yield to Home; no launch permitted");
@@ -158,6 +158,10 @@ final class AutostartSession {
         if (surface == Surface.OTHER) {
             cancel("user/app owns foreground");
             return Action.NONE;
+        }
+        if ((surface == Surface.HOME || surface == Surface.TARGET) && !state.bootReady) {
+            state.bootReady = true;
+            persist("safe foreground observed: " + surface + "; boot preparation complete");
         }
         if (surface == Surface.TARGET) {
             if (targetSince < 0) targetSince = now;
@@ -176,10 +180,6 @@ final class AutostartSession {
             return Action.NONE;
         }
         targetSince = -1;
-        if (surface == Surface.HOME && !state.homeObserved) {
-            state.homeObserved = true;
-            persist("safe Home observed; launch eligibility established");
-        }
         if (surface == Surface.HOME && !state.target.isEmpty() && now >= state.nextAttemptAt) {
             // Commit the cooldown BEFORE dispatch. A failed command or process death
             // must not create an unthrottled launch loop.

@@ -259,7 +259,7 @@ public final class AutostartSessionTest {
         test("first safe Home ends boot exemption even before first launch", () -> {
             Rig r = new Rig(); r.boot(true);
             eq(WAIT, r.session.check(100, HOME));
-            yes(r.saved.homeObserved); eq(0, r.saved.attempts);
+            yes(r.saved.bootReady); eq(0, r.saved.attempts);
             r.restart();
             eq(NONE, r.session.check(200, SYSTEM_SETTINGS));
             eq(CANCELLED, r.session.state.status);
@@ -267,6 +267,13 @@ public final class AutostartSessionTest {
         test("Settings after an existing target candidate is never boot preparation", () -> {
             Rig r = new Rig(); r.boot(true); r.session.check(1000, TARGET);
             eq(NONE, r.session.check(1100, SYSTEM_SETTINGS));
+            eq(CANCELLED, r.session.state.status);
+        });
+        test("a target candidate permanently ends boot Settings exemption across unknown and restart", () -> {
+            Rig r = new Rig(); r.boot(true); r.session.check(1000, TARGET);
+            yes(r.saved.bootReady);
+            r.session.check(1100, UNKNOWN); r.restart();
+            eq(NONE, r.session.check(1200, SYSTEM_SETTINGS));
             eq(CANCELLED, r.session.state.status);
         });
         test("boot Settings exception never covers Amazon Shop or other apps", () -> {
