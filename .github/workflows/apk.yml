@@ -1,0 +1,141 @@
+name: Plex test APK
+
+on:
+  push:
+    branches: [main, feat/plex-wake-autostart]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_test3:
+        description: Publish test.3 with the backed-up permanent signing key
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plex-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TOOLCHAIN_DIR: ${{ github.workspace }}/.tools
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install checksum-pinned toolchain
+        run: bash scripts/setup-android.sh
+      - name: State machine and foreground tests
+        run: JAVA_HOME="$TOOLCHAIN_DIR/jdk-21.0.8+9" bash scripts/test.sh
+      - name: Build and verify isolated debug APK
+        run: bash scripts/build.sh debug
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plex-test-debug-${{ github.sha }}
+          path: |
+            build/homeonfire-plex-test-debug.apk
+            build/homeonfire-plex-test-debug.apk.sha256
+            build/homeonfire-plex-test-debug.apk.badging.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  signed:
+    # Never expose the permanent key to pull-request code (including same-repo PRs).
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      configured: ${{ steps.signing.outputs.configured }}
+    env:
+      TOOLCHAIN_DIR: ${{ github.workspace }}/.tools
+    steps:
+      - name: Check permanent signing configuration
+        id: signing
+        env:
+          KEYSTORE: ${{ secrets.APK_SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.APK_SIGNING_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.APK_SIGNING_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.APK_SIGNING_KEY_ALIAS }}
+          CERT_SHA256: ${{ vars.APK_SIGNING_CERT_SHA256 }}
+          RELEASE_TEST3: ${{ github.event_name == 'workflow_dispatch' && inputs.release_test3 }}
+        run: |
+          if [[ -n "$KEYSTORE" && -n "$STORE_PASSWORD" && -n "$KEY_PASSWORD" && -n "$KEY_ALIAS" && "$CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'configured=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Permanent signing is not configured. Debug APKs do not provide a stable update signature. See docs/PLEX_AUTOSTART.md.'
+            if [[ "$RELEASE_TEST3" == true ]]; then
+              echo '::error::Release blocked: configure the four signing secrets and APK_SIGNING_CERT_SHA256 first.'
+              exit 1
+            fi
+          fi
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: steps.signing.outputs.configured == 'true'
+      - name: Install checksum-pinned toolchain
+        if: steps.signing.outputs.configured == 'true'
+        run: bash scripts/setup-android.sh
+      - name: Build with permanent test signature
+        if: steps.signing.outputs.configured == 'true'
+        env:
+          APK_SIGNING_KEYSTORE_BASE64: ${{ secrets.APK_SIGNING_KEYSTORE_BASE64 }}
+          APK_SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_STORE_PASSWORD }}
+          APK_SIGNING_KEY_PASSWORD: ${{ secrets.APK_SIGNING_KEY_PASSWORD }}
+          APK_SIGNING_KEY_ALIAS: ${{ secrets.APK_SIGNING_KEY_ALIAS }}
+          APK_SIGNING_CERT_SHA256: ${{ vars.APK_SIGNING_CERT_SHA256 }}
+        run: |
+          umask 077
+          export APK_SIGNING_KEYSTORE="$RUNNER_TEMP/plex-test-signing.p12"
+          trap 'rm -f "$APK_SIGNING_KEYSTORE"' EXIT
+          python3 - <<'PY'
+          import base64, os, pathlib
+          pathlib.Path(os.environ['APK_SIGNING_KEYSTORE']).write_bytes(
+              base64.b64decode(os.environ['APK_SIGNING_KEYSTORE_BASE64'], validate=True))
+          PY
+          unset APK_SIGNING_KEYSTORE_BASE64
+          bash scripts/build.sh release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.signing.outputs.configured == 'true'
+        with:
+          name: plex-test-signed-${{ github.sha }}
+          path: |
+            build/homeonfire-plex-test.apk
+            build/homeonfire-plex-test.apk.sha256
+            build/homeonfire-plex-test.apk.badging.txt
+            build/homeonfire-plex-test.apk.certificate.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  publish_test3:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_test3 && needs.signed.outputs.configured == 'true' && github.repository == 'IBGB-117/HomeOnFire-Plex' && github.ref == 'refs/heads/feat/plex-wake-autostart'
+    needs: [validate, signed]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Download validated, permanently signed APK from this run
+        run: |
+          gh run download "$GITHUB_RUN_ID" --name "plex-test-signed-$GITHUB_SHA" --dir build
+          (cd build && sha256sum -c homeonfire-plex-test.apk.sha256)
+          grep -F "versionCode='143' versionName='1.5.3-plex-test.3'" build/homeonfire-plex-test.apk.badging.txt
+      - name: Publish new public test.3 download
+        run: |
+          if gh release view plex-test-3 >/dev/null 2>&1; then
+            test "$(gh release view plex-test-3 --json isDraft --jq .isDraft)" = true || {
+              echo '::error::Public test.3 already exists. Do not replace a published update with another binary.'
+              exit 1
+            }
+          else
+            gh release create plex-test-3 --target "$GITHUB_SHA" --draft --prerelease --title 'HomeOnFire Plex Test 3 - boot readiness fix' --notes-file docs/RELEASE_TEST_3.md
+          fi
+          gh release upload plex-test-3 build/homeonfire-plex-test.apk build/homeonfire-plex-test.apk.sha256 build/homeonfire-plex-test.apk.certificate.txt --clobber
+          gh release edit plex-test-3 --draft=false --prerelease --latest=false --notes-file docs/RELEASE_TEST_3.md

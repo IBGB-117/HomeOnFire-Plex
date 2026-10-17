@@ -1,9 +1,9 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="io.github.toolicious.homeonfire"
-    android:versionCode="140"
-    android:versionName="1.5.2">
+    package="io.github.ibgb117.homeonfireplex.test"
+    android:versionCode="143"
+    android:versionName="1.5.3-plex-test.3">
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -32,6 +32,7 @@
             package visibility filtering hides it from us on API 30+.
         -->
         <package android:name="com.amazon.tv.quicksettings.ui" />
+        <package android:name="com.plexapp.android" />
     </queries>
 
     <application
@@ -80,10 +81,13 @@
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
+            android:directBootAware="true"
             android:exported="true"
             android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>

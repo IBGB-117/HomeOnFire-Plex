@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 toolicious
-package io.github.toolicious.homeonfire;
+package io.github.ibgb117.homeonfireplex.test;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
@@ -138,6 +138,7 @@ public class LogViewerActivity extends Activity {
         boolean wss = AccessibilityHelper.hasWriteSecureSettings(this);
         addRow(card, "Write secure settings", wss ? "granted" : "not granted",
                 wss ? OK_GREEN : DIM);
+        addRow(card, "Autostart", HijackService.autostartSummary(), DIM);
         addRow(card, "Replace Home", prefs.isHijackEnabled() ? "on" : "off", DIM);
         addRow(card, "Launch on boot", prefs.getLaunchOnBoot() ? "on" : "off", DIM);
 
@@ -313,7 +314,8 @@ public class LogViewerActivity extends Activity {
                         return line.trim().startsWith("---------");
                     }
                 });
-        return android.text.TextUtils.join("\n", tail).trim();
+        return AutostartDiagnostics.recent(this) + "\n--- logcat ---\n"
+                + android.text.TextUtils.join("\n", tail).trim();
     }
 
     private int dp(int value) {

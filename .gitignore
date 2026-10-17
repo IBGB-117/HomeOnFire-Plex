@@ -17,6 +17,9 @@ logcat.txt
 keystore/
 *.keystore
 *.jks
+*.p12
+*.pfx
+store-password
 keystore.properties
 
 # --- Old / scratch dirs ---
@@ -38,3 +41,8 @@ Thumbs.db
 
 # Files staged for the user to review and delete
 _trash/
+
+# Local Linux toolchain and development-only signing material
+.tools/
+.local-signing/
+__pycache__/

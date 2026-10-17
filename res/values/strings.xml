@@ -1,22 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Home on Fire</string>
-    <string name="service_label">Home on Fire Service</string>
-    <string name="repo_url">https://github.com/toolicious/home-on-fire</string>
+    <string name="app_name">HomeOnFire Plex Test</string>
+    <string name="service_label">HomeOnFire Plex Test Service</string>
+    <string name="repo_url">https://github.com/IBGB-117/HomeOnFire-Plex</string>
 
     <!--
         Shown by Android in Settings → Accessibility next to the toggle
         for our service. Should explain in one sentence what the service
         does and why it needs the binding.
     -->
-    <string name="accessibility_description">
-        Redirects the Fire TV Home button to a launcher of your choice,
-        and offers an optional long-press of the Menu key as a shortcut
-        back into Home on Fire.
-    </string>
+    <string name="accessibility_description">Starts Plex once after boot or observed wake, confirms its foreground window, and respects manual navigation. Explicit remote mappings remain available. Home is never redirected.</string>
 
     <!-- Target row -->
-    <string name="target_picker_tip">Choose which app to launch in place of the Fire TV home. Long-press opens the selected app\'s system info page.</string>
+    <string name="target_picker_tip">Choose which app to start once after boot or wake. Long-press opens the selected app\'s system info page.</string>
     <string name="target_none">Choose target app…</string>
     <string name="target_not_installed_suffix"> - not installed</string>
     <string name="target_picker_emoji">📂</string>
@@ -27,10 +23,10 @@
 
     <!-- Switches -->
     <string name="switch_accessibility">Accessibility service (required)</string>
-    <string name="switch_accessibility_tip">Required for everything else in this app to work. This permission has to be granted only once via adb:\nadb shell pm grant io.github.toolicious.homeonfire android.permission.WRITE_SECURE_SETTINGS\nFrom a phone shell app there is no adb: run just the pm grant part, without the adb shell prefix.</string>
-    <string name="switch_hijack">Replace ⌂ Home button</string>
-    <string name="switch_hijack_tip">Pressing ⌂ Home from any third-party app opens the target app instead of the Amazon home screen.\nDouble-press ⌂ Home about a second apart, or long-press it, in the target app to escape to the Amazon home screen if needed.\nPress ↩ Back or ◉ OK while the Home icon on the Amazon home screen is focused to open the target app.</string>
-    <string name="switch_hijack_tip_fos7">Pressing ⌂ Home from any third-party app opens the target app instead of the Amazon home screen.\nOn Fire OS 7 the system holds a Home press for up to 5 seconds; a loading animation covers the wait. A mapped launcher button that sends its own key code opens instantly instead.\nDouble-press ⌂ Home about a second apart, or long-press it, in the target app to escape to the Amazon home screen if needed.\nPress ↩ Back or ◉ OK while the Home icon on the Amazon home screen is focused to open the target app.</string>
+    <string name="switch_accessibility_tip">Required for everything else in this app to work. This permission has to be granted only once via adb:\nadb shell pm grant io.github.ibgb117.homeonfireplex.test android.permission.WRITE_SECURE_SETTINGS\nFrom a phone shell app there is no adb: run just the pm grant part, without the adb shell prefix.</string>
+    <string name="switch_hijack">Home redirection disabled in Plex test</string>
+    <string name="switch_hijack_tip">Home, Back, OK and Settings remain free. Only explicitly mapped remote buttons can open the target after autostart ends.</string>
+    <string name="switch_hijack_tip_fos7">Home, Back, OK and Settings remain free. Only explicitly mapped remote buttons can open the target after autostart ends.</string>
     <!-- Fire OS 7 only: what covers Amazon home during the ~5 s Home delay
          (shown on the right of the Replace Home row). -->
     <string name="mask_cover_label">Loading screen:</string>
@@ -45,8 +41,8 @@
     <string name="escape_long_box_tip">Hold ⌂ Home to switch between your launcher and the Amazon home screen. Turn this off if you would rather see the panel that a long press opens, with its profile, sleep and mirroring tiles. Some remotes have a settings button that opens the very same panel, and Home on Fire cannot tell the two apart, so turning this off also stops that button from switching launchers. Press ◉ OK to switch it on or off.</string>
     <string name="escape_double_box_tip">Press ⌂ Home twice, about a second apart, to stay on the Amazon home screen instead of being sent back to your launcher. Turn this off if you often press ⌂ Home repeatedly and end up on Amazon home by accident. Press ◉ OK to switch it on or off.</string>
 
-    <string name="switch_boot">Launch on boot</string>
-    <string name="switch_boot_tip">Open the target app automatically when the device boots or wakes from standby.</string>
+    <string name="switch_boot">Autostart on boot and wake</string>
+    <string name="switch_boot_tip">Start one session per boot or observed sleep/wake. Retry with increasing intervals until the target is confirmed in front or the user takes over. No fixed time limit.</string>
     <string name="switch_menu_lp">☰ Menu long-press opens this config screen</string>
     <string name="switch_menu_lp_tip">Hold the ☰ Menu button for half a second to open this config screen.</string>
     <!-- Instant launcher shortcuts: reach the target without going through the
@@ -132,7 +128,7 @@
     <string name="info_dialog_ok">OK</string>
 
     <!-- Toasts -->
-    <string name="toast_grant_via_adb">Run once via adb:\nadb shell pm grant io.github.toolicious.homeonfire android.permission.WRITE_SECURE_SETTINGS</string>
+    <string name="toast_grant_via_adb">Run once via adb:\nadb shell pm grant io.github.ibgb117.homeonfireplex.test android.permission.WRITE_SECURE_SETTINGS</string>
     <string name="toast_no_browser">No browser installed.</string>
     <string name="toast_settings_unavailable">Settings not available.</string>
     <string name="toast_no_target">No target app set.</string>
