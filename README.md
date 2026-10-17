@@ -8,8 +8,11 @@ replaced. **Fire OS 8.1.8.5 device validation is pending.**
 **[Download the signed test APK](https://github.com/IBGB-117/HomeOnFire-Plex/releases/download/plex-test-2/homeonfire-plex-test.apk)** (direct file download for Fire TV Downloader).
 
 The linked download is still **test.2**. The boot-preparation Settings fix on this
-PR branch is not yet available as a compatible signed update; signing recovery
-and the next test-package strategy are pending.
+PR branch is not yet published as a signed test.3 APK. A one-time reinstall of
+the same TEST package is agreed because its old private signing key is unavailable.
+[Set up and back up the new signature on your PC](docs/SIGNING_SETUP_DE.md) to enable
+the prepared GitHub release build. Do not uninstall the installed test app until
+the replacement APK is available and verified.
 
 See [Plex behavior, Linux/Cloud builds, signing, CI and acceptance tests](docs/PLEX_AUTOSTART.md).
 The original project documentation follows for provenance; its package names,

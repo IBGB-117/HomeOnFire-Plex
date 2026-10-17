@@ -48,6 +48,7 @@ if [[ "$mode" == release ]]; then
   : "${APK_SIGNING_STORE_PASSWORD:?Missing signing store password}"
   : "${APK_SIGNING_KEY_PASSWORD:?Missing signing key password}"
   : "${APK_SIGNING_KEY_ALIAS:?Missing signing alias}"
+  : "${APK_SIGNING_CERT_SHA256:?Missing public signing certificate pin}"
   output=build/homeonfire-plex-test.apk
   "$tools/apksigner" sign --ks "$APK_SIGNING_KEYSTORE" --ks-key-alias "$APK_SIGNING_KEY_ALIAS" --ks-pass env:APK_SIGNING_STORE_PASSWORD --key-pass env:APK_SIGNING_KEY_PASSWORD --v4-signing-enabled false --out "$output" "$work/aligned.apk"
 else
@@ -59,9 +60,19 @@ else
   output=build/homeonfire-plex-test-debug.apk
   "$tools/apksigner" sign --ks .local-signing/debug.keystore --ks-pass pass:android --v4-signing-enabled false --out "$output" "$work/aligned.apk"
 fi
-"$tools/apksigner" verify --verbose --print-certs "$output"
+"$tools/apksigner" verify --verbose --print-certs "$output" | tee "$output.certificate.txt"
+if [[ "$mode" == release ]]; then
+  python3 - "$output.certificate.txt" <<'PY'
+import importlib.util, os, pathlib, sys
+spec = importlib.util.spec_from_file_location('verify_apk', 'scripts/verify-apk.py')
+verifier = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(verifier)
+verifier.verify_signing_certificate(pathlib.Path(sys.argv[1]).read_text(), os.environ['APK_SIGNING_CERT_SHA256'])
+print('Permanent signing certificate matches the backed-up key pin')
+PY
+fi
 "$tools/zipalign" -c -p 4 "$output"
 "$tools/aapt2" dump badging "$output" > "$output.badging.txt"
 python3 scripts/verify-apk.py "$output"
-sha256sum "$output" > "$output.sha256"
+(cd build && sha256sum "$(basename "$output")") > "$output.sha256"
 echo "Built and verified: $output"

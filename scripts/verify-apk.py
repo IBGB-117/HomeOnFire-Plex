@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 import pathlib
+import re
 import struct
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
+
+
+def verify_signing_certificate(report, expected):
+    if not re.fullmatch(r'[0-9a-fA-F]{64}', expected):
+        raise ValueError('A SHA-256 certificate pin is required for permanent signing')
+    actual = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})$',
+                        report, re.MULTILINE)
+    if len(actual) != 1 or actual[0].lower() != expected.lower():
+        raise ValueError('APK signing certificate differs from the backed-up permanent key')
 
 
 def verify_resource_table(apk):

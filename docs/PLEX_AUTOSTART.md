@@ -92,9 +92,10 @@ restored cloud workspace, no backup is known, and the GitHub integration cannot
 access Actions Secrets (403). No replacement key is silently generated for an
 in-place update. Do not install a fresh CI debug APK over test.2. The current
 published test.2 download and its signing certificate remain unchanged. A new
-signing key must be secured outside the ephemeral workspace, with an explicit
-choice of a separate test-package identity or a one-time reinstall of the old TEST
-package. The original application's package and data remain untouched.
+signing key must be secured outside the ephemeral workspace. The owner selected
+a one-time reinstall of the existing TEST package and accepted loss of its test
+preferences; the package identity is retained. The original application's package
+and data remain untouched.
 
 ## User control and remote mappings
 
@@ -228,18 +229,22 @@ for later updates. Never rotate an existing key merely to fix a failed build.
 Back up the encrypted keystore and its password securely outside GitHub/Codex;
 GitHub Secrets cannot be downloaded later as a backup.
 
-Generate and optionally upload the isolated TEST key using a GitHub identity with
-Actions Secrets read/write access. This is not the original app's signing key:
+The owner selected a one-time reinstall of the existing TEST package for test.3.
+Prepare the replacement signing identity on a **persistent user PC**, not in the
+restorable Codex workspace. See [the German PC setup instructions](SIGNING_SETUP_DE.md).
+This preserves fully cloud-based development/builds while keeping a recoverable
+key under the owner's control. On a PC with Java/keytool, Python and authenticated
+GitHub CLI with Secrets/Variables write access:
 
 ```bash
-export JAVA_HOME=/workspace/.onboarding/jdk-21.0.8+9
-python3 scripts/configure-signing.py --directory /workspace/.onboarding/plex-test-signing
-# After securely backing up this directory, upload without printing secret values:
-python3 scripts/configure-signing.py --directory /workspace/.onboarding/plex-test-signing --upload
+python3 scripts/configure-signing.py --directory "$HOME/.local/share/homeonfire-plex-signierung" --backup-directory "$HOME/HomeOnFire-Plex-Schluesselsicherung" --upload
 ```
 
-The helper refuses to place permanent key material inside the checkout and refuses
-to overwrite existing signing secret names. It saves these four repository secrets:
+The helper refuses signing material in any checkout, requires and verifies a
+separate private backup before upload, and pins the public certificate SHA-256 in
+repository variable `APK_SIGNING_CERT_SHA256`. An interrupted upload can resume
+with the same backed-up identity. Different pins and unpinned existing signing
+secrets are rejected instead of silently rotating keys. It saves these four secrets:
 
 - `APK_SIGNING_KEYSTORE_BASE64`: base64-encoded PKCS12 keystore (single line).
 - `APK_SIGNING_STORE_PASSWORD`: keystore password.
@@ -251,10 +256,15 @@ these securely in GitHub Settings → Secrets and variables → Actions, or run 
 helper with a suitably authorized identity. Do not paste secret values into chat.
 A missing configuration produces a visible workflow warning and no permanent-key
 artifact; a successful debug job does not establish permanent signing readiness.
+An explicitly requested test.3 publication fails if signing is missing. After
+configuration, dispatch `apk.yml` on `feat/plex-wake-autostart` with boolean input
+`release_test3=true`. Only this trusted manual run can publish a new `plex-test-3`
+release after tests, signing and certificate-pin verification. Existing public
+test.3 binaries cannot be replaced; the old test.2 download remains unchanged.
 
 For a local permanent-key build, set `APK_SIGNING_KEYSTORE`,
-`APK_SIGNING_STORE_PASSWORD`, `APK_SIGNING_KEY_PASSWORD` and `APK_SIGNING_KEY_ALIAS`
-in the build process environment, then run `bash scripts/build.sh release`. Supply
+`APK_SIGNING_STORE_PASSWORD`, `APK_SIGNING_KEY_PASSWORD`, `APK_SIGNING_KEY_ALIAS`
+and the public `APK_SIGNING_CERT_SHA256` in the build process environment, then run `bash scripts/build.sh release`. Supply
 passwords securely; do not put them in committed files or shell history.
 
 APK ZIP order and timestamps are normalized from `SOURCE_DATE_EPOCH` (default: Git
